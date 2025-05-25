@@ -1,0 +1,171 @@
+
+---------------------------------------------AWS CloudFormation(22:08)-------------------------------------
+
+AWS CloudFormation एक Infrastructure as Code (IaC) service है जो आपको AWS resources (जैसे EC2, RDS, S3, IAM roles, etc.) को automate और manage करने में मदद करती है। आप एक simple YAML या JSON template लिखते हैं और CloudFormation उस template के अनुसार सारे resources को create, update या delete करता है।
+
+
+-------------------------------------------------------Terraform(32:52)(52:20)-------------------------------------------
+
+Terraform एक Infrastructure as Code (IaC) टूल है जिसे HashiCorp ने बनाया है। इसकी मदद से आप अपने क्लाउड इंफ्रास्ट्रक्चर (जैसे AWS, Azure, Google Cloud आदि) को कोड के रूप में परिभाषित और मैनेज कर सकते हैं।
+
+------------------------------------------------main.tf--------(28:08)-----------------------------------------------
+provider "aws" {
+  region     = "ap-south-1"
+  access_key =  " "     -------------> than go to aws search IAM and create user and genrate (access_key ) & ( secret_key )
+  secret_key = ""
+}
+
+
+🔹 provider "aws" – यह AWS provider को initialize करता है।
+➡️ यहाँ आप बता रहे हैं कि आप कौन से region में (जैसे ap-south-1 यानी Mumbai) काम कर रहे हैं और AWS की credentials कौन सी हैं।
+➡️ यह credentials production में कभी hardcode नहीं करनी चाहिए (Security Risk)।
+
+-----------------------------------------------provider.tf--------------------------------------
+
+resource "aws_instance" "vm-1" {
+  ami                    = "${var.ami}" 
+  instance_type          = "${var.instance}"
+  key_name               = "${var.key}"
+  vpc_security_group_ids = ["default"]
+
+  tags = {
+    Name = "DefultLinuxEC2Instance"
+  }
+}
+
+
+🔹 resource "aws_instance" "vm_1" – यह EC2 instance launch करने का block है।
+
+| Key                                  | Explanation                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------- 
+| `ami`                              | जो AMI ID आप variables में दे रहे हैं (`ami-0af956...`) उसे यहाँ इस्तेमाल किया गया है |
+| `instance_type`             | जैसे `t2.micro`                                                                       
+| `key_name`                   | SSH access के लिए key pair                                                            
+| `vpc_security_group_ids` | EC2 को जो security group assign करना है (यहाँ आपने custom बनाया `default_sg`)         
+| `tags`                             | AWS Console में यह EC2 का नाम show करेगा                                              
+
+
+--------------------------------------------------------------------input.tf--------------------------------------
+
+variable "ami" {      
+  default     = "ami-0af9569868786b23a"
+  description = "amazone machine image id"
+}
+
+यह एक AMI ID variable है जिसे हम main.tf में उपयोग कर रहे हैं।
+
+
+variable "instance" {      
+  default     = "t2.micro"
+  description = "Type of instance"
+}
+
+यह EC2 का type है – आप चाहें तो इसे बाद में बदल सकते हैं (t2.medium, t3.micro, आदि)।
+
+variable "key" {      
+  default     = "devops_session_2"
+  description = "key pair ssh"
+}
+
+EC2 instance में SSH login के लिए key pair का नाम जो AWS Console में पहले से exist होना चाहिए।
+
+
+
+------------------------------------------------------------------output.tf------------------------------------------------------
+
+output "ec2_vm_public_ip" {
+  description = "Public IP of the EC2 instance"
+  value       = aws_instance.vm-1.public_ip
+}
+
+
+Terraform apply के बाद आप public IP देख सकेंगे जिससे SSH कर सकें:
+
+
+                                                                                            terraform destroy
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Terraform Architecture
+       main.tf ---> terraform init --> genrate(.terraform.lock.hcl) [planing details] --> terraform validate --> terraform fmt ----> terraform plan(genrate plan document  ---> terraform apply(genrate json structure)
+
+
+ Terraform Execution Architecture (Flow-Based Understanding)
+
+              main.tf / .tf files
+                    │
+                    ▼
+           terraform init
+                    │
+                    ├──> Initializes `.terraform` directory
+                    └──> Generates `.terraform.lock.hcl` (provider versions lock)
+                    │
+                    ▼
+          terraform validate
+     (Syntax & Configuration validation)
+                    │
+                    ▼
+            terraform fmt
+     (Formats your code for readability)
+                    │
+                    ▼
+            terraform plan
+         (Generates execution plan)
+                    │
+                    ├──> [Optionally save plan]
+                    │     terraform plan -out=tfplan
+                    ▼
+            terraform apply
+        (Applies the changes to infra)
+                    │
+                    ├──> Generates actual infra (AWS EC2 etc.)
+                    └──> Updates `terraform.tfstate` file
+                    ▼
+              Infrastructure Live
+
+
+terraform destroy
+
+-----------------------------------project working--------  (47:50)--------------------------------------------------------------------------------
+
+create folder ---> tcs   , tcs--->module(folder) -->main.tf --> provider.tf
+ module ---> ec2(folder) --> s3(folder) ---> rds(folder)
+ec2 ---> main.tf  ---> input.tf  ---> out.tf
+s3 --> main.tf  ---> input.tf  ---> out.tf
+rds ---->  main.tf  ---> input.tf  ---> out.tf
+
+
+
+                       
+                                           +-------------------+
+                            |   provider.tf     |
+                            +-------------------+
+                                      |
+                          +-----------+-----------+
+                          |                       |
+                    +-----v-----+           +-----v-----+
+                    | variables |           | tfvars    |
+                    +-----------+           +-----------+
+                          |
+                    +-----v-----+
+                    |  main.tf   |  <--------- Project Root (tcs/)
+                    +-----+-----+
+                          |
+    +---------------------+----------------------+
+    |                    |                      |
+    |                    |                      |
++---v---+          +-----v-----+          +------v------+
+| EC2   |          |   S3      |          |     RDS     |       <-- Modules folder
+|Module |          |  Module   |          |   Module    |
++---+---+          +-----+-----+          +------+------+
+    |                    |                       |
+    |                    |                       |
++---v---+          +-----v-----+          +------v------+
+|input  |          |  input.tf |          |  input.tf    |
+|.tf    |          |  main.tf  |          |  main.tf     |
+|main.tf|          |  out.tf   |          |  out.tf      |
+|out.tf|           +-----------+          +-------------+
++-------+
+
+                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
